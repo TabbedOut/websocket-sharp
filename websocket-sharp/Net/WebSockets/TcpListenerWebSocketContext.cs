@@ -26,6 +26,13 @@
  */
 #endregion
 
+#region Contributors
+/*
+ * Contributors:
+ * - Liryna <liryna.stark@gmail.com>
+ */
+#endregion
+
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -61,15 +68,26 @@ namespace WebSocketSharp.Net.WebSockets
     #region Internal Constructors
 
     internal TcpListenerWebSocketContext (
-      TcpClient tcpClient, string protocol, bool secure, X509Certificate certificate, Logger logger)
+      TcpClient tcpClient,
+      string protocol,
+      bool secure,
+      ServerSslConfiguration sslConfig,
+      Logger logger)
     {
       _tcpClient = tcpClient;
       _secure = secure;
 
       var netStream = tcpClient.GetStream ();
       if (secure) {
-        var sslStream = new SslStream (netStream, false);
-        sslStream.AuthenticateAsServer (certificate);
+        var sslStream = new SslStream (
+          netStream, false, sslConfig.ClientCertificateValidationCallback);
+
+        sslStream.AuthenticateAsServer (
+          sslConfig.ServerCertificate,
+          sslConfig.ClientCertificateRequired,
+          sslConfig.EnabledSslProtocols,
+          sslConfig.CheckCertificateRevocation);
+
         _stream = sslStream;
       }
       else {
@@ -86,6 +104,12 @@ namespace WebSocketSharp.Net.WebSockets
     #endregion
 
     #region Internal Properties
+
+    internal string HttpMethod {
+      get {
+        return _request.HttpMethod;
+      }
+    }
 
     internal Stream Stream {
       get {
@@ -141,7 +165,7 @@ namespace WebSocketSharp.Net.WebSockets
     /// </value>
     public override bool IsAuthenticated {
       get {
-        return _user != null && _user.Identity.IsAuthenticated;
+        return _user != null;
       }
     }
 
@@ -286,7 +310,7 @@ namespace WebSocketSharp.Net.WebSockets
     /// Gets the client information (identity, authentication, and security roles).
     /// </summary>
     /// <value>
-    /// A <see cref="IPrincipal"/> that represents the client information.
+    /// A <see cref="IPrincipal"/> instance that represents the client information.
     /// </value>
     public override IPrincipal User {
       get {
@@ -341,38 +365,9 @@ namespace WebSocketSharp.Net.WebSockets
       _request = HttpRequest.Read (_stream, 15000);
     }
 
-    internal void SetUser (
-      AuthenticationSchemes scheme,
-      string realm,
-      Func<IIdentity, NetworkCredential> credentialsFinder)
+    internal void SetUser (IPrincipal value)
     {
-      var authRes = _request.AuthenticationResponse;
-      if (authRes == null)
-        return;
-
-      var id = authRes.ToIdentity ();
-      if (id == null)
-        return;
-
-      NetworkCredential cred = null;
-      try {
-        cred = credentialsFinder (id);
-      }
-      catch {
-      }
-
-      if (cred == null)
-        return;
-
-      var valid = scheme == AuthenticationSchemes.Basic
-                  ? ((HttpBasicIdentity) id).Password == cred.Password
-                  : scheme == AuthenticationSchemes.Digest
-                    ? ((HttpDigestIdentity) id).IsValid (
-                        cred.Password, realm, _request.HttpMethod, null)
-                    : false;
-
-      if (valid)
-        _user = new GenericPrincipal (id, cred.Roles);
+      _user = value;
     }
 
     #endregion

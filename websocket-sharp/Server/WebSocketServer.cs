@@ -33,6 +33,7 @@
  * Contributors:
  * - Juan Manuel Lallana <juan.manuel.lallana@gmail.com>
  * - Jonas Hovgaard <j@jhovgaard.dk>
+ * - Liryna <liryna.stark@gmail.com>
  */
 #endregion
 
@@ -60,16 +61,16 @@ namespace WebSocketSharp.Server
 
     private System.Net.IPAddress               _address;
     private AuthenticationSchemes              _authSchemes;
-    private X509Certificate2                   _certificate;
     private Func<IIdentity, NetworkCredential> _credentialsFinder;
     private TcpListener                        _listener;
     private Logger                             _logger;
     private int                                _port;
     private string                             _realm;
-    private Thread                             _receiveRequestThread;
+    private Thread                             _receiveThread;
     private bool                               _reuseAddress;
     private bool                               _secure;
     private WebSocketServiceManager            _services;
+    private ServerSslConfiguration             _sslConfig;
     private volatile ServerState               _state;
     private object                             _sync;
     private Uri                                _uri;
@@ -312,29 +313,6 @@ namespace WebSocketSharp.Server
     }
 
     /// <summary>
-    /// Gets or sets the certificate used to authenticate the server on the secure connection.
-    /// </summary>
-    /// <value>
-    /// A <see cref="X509Certificate2"/> that represents the certificate used to authenticate
-    /// the server.
-    /// </value>
-    public X509Certificate2 Certificate {
-      get {
-        return _certificate;
-      }
-
-      set {
-        var msg = _state.CheckIfStartable ();
-        if (msg != null) {
-          _logger.Error (msg);
-          return;
-        }
-
-        _certificate = value;
-      }
-    }
-
-    /// <summary>
     /// Gets a value indicating whether the server has started.
     /// </summary>
     /// <value>
@@ -463,6 +441,30 @@ namespace WebSocketSharp.Server
     }
 
     /// <summary>
+    /// Gets or sets the SSL configuration used to authenticate the server and
+    /// optionally the client for secure connection.
+    /// </summary>
+    /// <value>
+    /// A <see cref="ServerSslConfiguration"/> that represents the configuration used
+    /// to authenticate the server and optionally the client for secure connection.
+    /// </value>
+    public ServerSslConfiguration SslConfiguration {
+      get {
+        return _sslConfig ?? (_sslConfig = new ServerSslConfiguration (null));
+      }
+
+      set {
+        var msg = _state.CheckIfStartable ();
+        if (msg != null) {
+          _logger.Error (msg);
+          return;
+        }
+
+        _sslConfig = value;
+      }
+    }
+
+    /// <summary>
     /// Gets or sets the delegate called to find the credentials for an identity used to
     /// authenticate a client.
     /// </summary>
@@ -541,13 +543,16 @@ namespace WebSocketSharp.Server
       _state = ServerState.Stop;
     }
 
-    private bool authenticateRequest (
-      AuthenticationSchemes scheme, TcpListenerWebSocketContext context)
+    private static bool authenticate (
+      TcpListenerWebSocketContext context,
+      AuthenticationSchemes scheme,
+      string realm,
+      Func<IIdentity, NetworkCredential> credentialsFinder)
     {
       var chal = scheme == AuthenticationSchemes.Basic
-                 ? AuthenticationChallenge.CreateBasicChallenge (Realm).ToBasicString ()
+                 ? AuthenticationChallenge.CreateBasicChallenge (realm).ToBasicString ()
                  : scheme == AuthenticationSchemes.Digest
-                   ? AuthenticationChallenge.CreateDigestChallenge (Realm).ToDigestString ()
+                   ? AuthenticationChallenge.CreateDigestChallenge (realm).ToDigestString ()
                    : null;
 
       if (chal == null) {
@@ -556,9 +561,6 @@ namespace WebSocketSharp.Server
       }
 
       var retry = -1;
-      var schm = scheme.ToString ();
-      var realm = Realm;
-      var credFinder = UserCredentialsFinder;
       Func<bool> auth = null;
       auth = () => {
         retry++;
@@ -567,19 +569,16 @@ namespace WebSocketSharp.Server
           return false;
         }
 
-        var res = context.Headers["Authorization"];
-        if (res == null || !res.StartsWith (schm, StringComparison.OrdinalIgnoreCase)) {
-          context.SendAuthenticationChallenge (chal);
-          return auth ();
+        var user = HttpUtility.CreateUser (
+          context.Headers["Authorization"], scheme, realm, context.HttpMethod, credentialsFinder);
+
+        if (user != null && user.Identity.IsAuthenticated) {
+          context.SetUser (user);
+          return true;
         }
 
-        context.SetUser (scheme, realm, credFinder);
-        if (!context.IsAuthenticated) {
-          context.SendAuthenticationChallenge (chal);
-          return auth ();
-        }
-
-        return true;
+        context.SendAuthenticationChallenge (chal);
+        return auth ();
       };
 
       return auth ();
@@ -587,7 +586,7 @@ namespace WebSocketSharp.Server
 
     private string checkIfCertificateExists ()
     {
-      return _secure && _certificate == null
+      return _secure && (_sslConfig == null || _sslConfig.ServerCertificate == null)
              ? "The secure connection requires a server certificate."
              : null;
     }
@@ -602,7 +601,7 @@ namespace WebSocketSharp.Server
       _sync = new object ();
     }
 
-    private void processWebSocketRequest (TcpListenerWebSocketContext context)
+    private void processRequest (TcpListenerWebSocketContext context)
     {
       var uri = context.RequestUri;
       if (uri == null) {
@@ -638,12 +637,12 @@ namespace WebSocketSharp.Server
           ThreadPool.QueueUserWorkItem (
             state => {
               try {
-                var ctx = cl.GetWebSocketContext (null, _secure, _certificate, _logger);
+                var ctx = cl.GetWebSocketContext (null, _secure, _sslConfig, _logger);
                 if (_authSchemes != AuthenticationSchemes.Anonymous &&
-                    !authenticateRequest (_authSchemes, ctx))
+                    !authenticate (ctx, _authSchemes, Realm, UserCredentialsFinder))
                   return;
 
-                processWebSocketRequest (ctx);
+                processRequest (ctx);
               }
               catch (Exception ex) {
                 _logger.Fatal (ex.ToString ());
@@ -672,15 +671,15 @@ namespace WebSocketSharp.Server
           SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
 
       _listener.Start ();
-      _receiveRequestThread = new Thread (new ThreadStart (receiveRequest));
-      _receiveRequestThread.IsBackground = true;
-      _receiveRequestThread.Start ();
+      _receiveThread = new Thread (new ThreadStart (receiveRequest));
+      _receiveThread.IsBackground = true;
+      _receiveThread.Start ();
     }
 
     private void stopReceiving (int millisecondsTimeout)
     {
       _listener.Stop ();
-      _receiveRequestThread.Join (millisecondsTimeout);
+      _receiveThread.Join (millisecondsTimeout);
     }
 
     private static bool tryCreateUri (string uriString, out Uri result, out string message)

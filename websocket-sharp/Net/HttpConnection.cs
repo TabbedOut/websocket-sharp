@@ -37,6 +37,13 @@
  */
 #endregion
 
+#region Contributors
+/*
+ * Contributors:
+ * - Liryna <liryna.stark@gmail.com>
+ */
+#endregion
+
 using System;
 using System.IO;
 using System.Net;
@@ -64,7 +71,7 @@ namespace WebSocketSharp.Net
     private EndPointListener    _listener;
     private ResponseStream      _outputStream;
     private int                 _position;
-    private ListenerPrefix      _prefix;
+    private HttpListenerPrefix  _prefix;
     private MemoryStream        _requestBuffer;
     private int                 _reuses;
     private bool                _secure;
@@ -86,8 +93,14 @@ namespace WebSocketSharp.Net
 
       var netStream = new NetworkStream (socket, false);
       if (_secure) {
-        var sslStream = new SslStream (netStream, false);
-        sslStream.AuthenticateAsServer (listener.Certificate);
+        var conf = listener.SslConfiguration;
+        var sslStream = new SslStream (netStream, false, conf.ClientCertificateValidationCallback);
+        sslStream.AuthenticateAsServer (
+          conf.ServerCertificate,
+          conf.ClientCertificateRequired,
+          conf.EnabledSslProtocols,
+          conf.CheckCertificateRevocation);
+
         _stream = sslStream;
       }
       else {
@@ -123,7 +136,7 @@ namespace WebSocketSharp.Net
       }
     }
 
-    public ListenerPrefix Prefix {
+    public HttpListenerPrefix Prefix {
       get {
         return _prefix;
       }

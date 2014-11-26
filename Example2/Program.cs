@@ -29,17 +29,19 @@ namespace Example2
 #endif
       /* To provide the secure connection.
       var cert = ConfigurationManager.AppSettings["ServerCertFile"];
-      var password = ConfigurationManager.AppSettings["CertFilePassword"];
-      wssv.Certificate = new X509Certificate2 (cert, password);
+      var passwd = ConfigurationManager.AppSettings["CertFilePassword"];
+      wssv.SslConfiguration.ServerCertificate = new X509Certificate2 (cert, passwd);
        */
 
       /* To provide the HTTP Authentication (Basic/Digest).
       wssv.AuthenticationSchemes = AuthenticationSchemes.Basic;
       wssv.Realm = "WebSocket Test";
       wssv.UserCredentialsFinder = id => {
-        var expected = "nobita";
-        return id.Name == expected
-               ? new NetworkCredential (expected, "password", "gunfighter")
+        var name = id.Name;
+
+        // Return user name, password, and roles.
+        return name == "nobita"
+               ? new NetworkCredential (name, "password", "gunfighter")
                : null; // If the user credentials aren't found.
       };
        */

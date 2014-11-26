@@ -28,17 +28,19 @@ namespace Example3
 #endif
       /* To provide the secure connection.
       var cert = ConfigurationManager.AppSettings["ServerCertFile"];
-      var password = ConfigurationManager.AppSettings["CertFilePassword"];
-      httpsv.Certificate = new X509Certificate2 (cert, password);
+      var passwd = ConfigurationManager.AppSettings["CertFilePassword"];
+      httpsv.SslConfiguration.ServerCertificate = new X509Certificate2 (cert, passwd);
        */
 
       /* To provide the HTTP Authentication (Basic/Digest).
       httpsv.AuthenticationSchemes = AuthenticationSchemes.Basic;
       httpsv.Realm = "WebSocket Test";
       httpsv.UserCredentialsFinder = id => {
-        var expected = "nobita";
-        return id.Name == expected
-               ? new NetworkCredential (expected, "password", "gunfighter")
+        var name = id.Name;
+
+        // Return user name, password, and roles.
+        return name == "nobita"
+               ? new NetworkCredential (name, "password", "gunfighter")
                : null; // If the user credentials aren't found.
       };
        */
@@ -71,6 +73,9 @@ namespace Example3
 
       // Not to remove the inactive WebSocket sessions periodically.
       //httpsv.KeepClean = false;
+
+      // To resolve to wait for socket in TIME_WAIT state.
+      //httpsv.ReuseAddress = true;
 
       // Add the WebSocket services.
       httpsv.AddWebSocketService<Echo> ("/Echo");

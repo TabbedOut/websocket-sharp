@@ -32,6 +32,7 @@
 /*
  * Contributors:
  * - Juan Manuel Lallana <juan.manuel.lallana@gmail.com>
+ * - Liryna <liryna.stark@gmail.com>
  */
 #endregion
 
@@ -60,7 +61,7 @@ namespace WebSocketSharp.Server
     private HttpListener            _listener;
     private Logger                  _logger;
     private int                     _port;
-    private Thread                  _receiveRequestThread;
+    private Thread                  _receiveThread;
     private string                  _rootPath;
     private bool                    _secure;
     private WebSocketServiceManager _services;
@@ -148,8 +149,8 @@ namespace WebSocketSharp.Server
       var os = Environment.OSVersion;
       _windows = os.Platform != PlatformID.Unix && os.Platform != PlatformID.MacOSX;
 
-      var prefix = String.Format ("http{0}://*:{1}/", _secure ? "s" : "", _port);
-      _listener.Prefixes.Add (prefix);
+      var pref = String.Format ("http{0}://*:{1}/", _secure ? "s" : "", _port);
+      _listener.Prefixes.Add (pref);
     }
 
     #endregion
@@ -177,32 +178,6 @@ namespace WebSocketSharp.Server
         }
 
         _listener.AuthenticationSchemes = value;
-      }
-    }
-
-    /// <summary>
-    /// Gets or sets the certificate used to authenticate the server on the secure connection.
-    /// </summary>
-    /// <value>
-    /// A <see cref="X509Certificate2"/> that represents the certificate used to authenticate
-    /// the server.
-    /// </value>
-    public X509Certificate2 Certificate {
-      get {
-        return _listener.DefaultCertificate;
-      }
-
-      set {
-        var msg = _state.CheckIfStartable ();
-        if (msg != null) {
-          _logger.Error (msg);
-          return;
-        }
-
-        if (EndPointListener.CertificateExists (_port, _listener.CertificateFolderPath))
-          _logger.Warn ("The server certificate associated with the port number already exists.");
-
-        _listener.DefaultCertificate = value;
       }
     }
 
@@ -307,6 +282,34 @@ namespace WebSocketSharp.Server
     }
 
     /// <summary>
+    /// Gets or sets a value indicating whether the server is allowed to be bound to an address
+    /// that is already in use.
+    /// </summary>
+    /// <remarks>
+    /// If you would like to resolve to wait for socket in <c>TIME_WAIT</c> state, you should set
+    /// this property to <c>true</c>.
+    /// </remarks>
+    /// <value>
+    /// <c>true</c> if the server is allowed to be bound to an address that is already in use;
+    /// otherwise, <c>false</c>. The default value is <c>false</c>.
+    /// </value>
+    public bool ReuseAddress {
+      get {
+        return _listener.ReuseAddress;
+      }
+
+      set {
+        var msg = _state.CheckIfStartable ();
+        if (msg != null) {
+          _logger.Error (msg);
+          return;
+        }
+
+        _listener.ReuseAddress = value;
+      }
+    }
+
+    /// <summary>
     /// Gets or sets the document root path of the server.
     /// </summary>
     /// <value>
@@ -328,6 +331,30 @@ namespace WebSocketSharp.Server
         }
 
         _rootPath = value;
+      }
+    }
+
+    /// <summary>
+    /// Gets or sets the SSL configuration used to authenticate the server and
+    /// optionally the client for secure connection.
+    /// </summary>
+    /// <value>
+    /// A <see cref="ServerSslConfiguration"/> that represents the configuration used
+    /// to authenticate the server and optionally the client for secure connection.
+    /// </value>
+    public ServerSslConfiguration SslConfiguration {
+      get {
+        return _listener.SslConfiguration;
+      }
+
+      set {
+        var msg = _state.CheckIfStartable ();
+        if (msg != null) {
+          _logger.Error (msg);
+          return;
+        }
+
+        _listener.SslConfiguration = value;
       }
     }
 
@@ -459,33 +486,24 @@ namespace WebSocketSharp.Server
       _state = ServerState.Stop;
     }
 
-    private bool authenticateRequest (AuthenticationSchemes scheme, HttpListenerContext context)
-    {
-      if (context.Request.IsAuthenticated)
-        return true;
-
-      if (scheme == AuthenticationSchemes.Basic)
-        context.Response.CloseWithAuthChallenge (
-          AuthenticationChallenge.CreateBasicChallenge (_listener.Realm).ToBasicString ());
-      else if (scheme == AuthenticationSchemes.Digest)
-        context.Response.CloseWithAuthChallenge (
-          AuthenticationChallenge.CreateDigestChallenge (_listener.Realm).ToDigestString ());
-      else
-        context.Response.Close (HttpStatusCode.Forbidden);
-
-      return false;
-    }
-
     private string checkIfCertificateExists ()
     {
-      return _secure &&
-             !EndPointListener.CertificateExists (_port, _listener.CertificateFolderPath) &&
-             _listener.DefaultCertificate == null
+      if (!_secure)
+        return null;
+
+      var usr = _listener.SslConfiguration.ServerCertificate != null;
+      var port = EndPointListener.CertificateExists (_port, _listener.CertificateFolderPath);
+      if (usr && port) {
+        _logger.Warn ("The server certificate associated with the port number already exists.");
+        return null;
+      }
+
+      return !(usr || port)
              ? "The secure connection requires a server certificate."
              : null;
     }
 
-    private void processHttpRequest (HttpListenerContext context)
+    private void processRequest (HttpListenerContext context)
     {
       var method = context.Request.HttpMethod;
       var evt = method == "GET"
@@ -516,7 +534,7 @@ namespace WebSocketSharp.Server
       context.Response.Close ();
     }
 
-    private void processWebSocketRequest (HttpListenerWebSocketContext context)
+    private void processRequest (HttpListenerWebSocketContext context)
     {
       WebSocketServiceHost host;
       if (!_services.InternalTryGetServiceHost (context.RequestUri.AbsolutePath, out host)) {
@@ -535,17 +553,12 @@ namespace WebSocketSharp.Server
           ThreadPool.QueueUserWorkItem (
             state => {
               try {
-                var schm = _listener.SelectAuthenticationScheme (ctx);
-                if (schm != AuthenticationSchemes.Anonymous &&
-                    !authenticateRequest (schm, ctx))
-                  return;
-
                 if (ctx.Request.IsUpgradeTo ("websocket")) {
-                  processWebSocketRequest (ctx.AcceptWebSocket (null, _logger));
+                  processRequest (ctx.AcceptWebSocket (null, _logger));
                   return;
                 }
 
-                processHttpRequest (ctx);
+                processRequest (ctx);
               }
               catch (Exception ex) {
                 _logger.Fatal (ex.ToString ());
@@ -570,15 +583,15 @@ namespace WebSocketSharp.Server
     private void startReceiving ()
     {
       _listener.Start ();
-      _receiveRequestThread = new Thread (new ThreadStart (receiveRequest));
-      _receiveRequestThread.IsBackground = true;
-      _receiveRequestThread.Start ();
+      _receiveThread = new Thread (new ThreadStart (receiveRequest));
+      _receiveThread.IsBackground = true;
+      _receiveThread.Start ();
     }
 
     private void stopReceiving (int millisecondsTimeout)
     {
       _listener.Close ();
-      _receiveRequestThread.Join (millisecondsTimeout);
+      _receiveThread.Join (millisecondsTimeout);
     }
 
     #endregion
@@ -658,12 +671,12 @@ namespace WebSocketSharp.Server
     /// </param>
     public byte[] GetFile (string path)
     {
-      var filePath = RootPath + path;
+      path = RootPath + path;
       if (_windows)
-        filePath = filePath.Replace ("/", "\\");
+        path = path.Replace ("/", "\\");
 
-      return File.Exists (filePath)
-             ? File.ReadAllBytes (filePath)
+      return File.Exists (path)
+             ? File.ReadAllBytes (path)
              : null;
     }
 

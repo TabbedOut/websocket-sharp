@@ -38,6 +38,7 @@
  * - Frank Razenberg <frank@zzattack.org>
  * - David Wood <dpwood@gmail.com>
  * - Rob Myers <developer@robandjen.com>
+ * - Liryna <liryna.stark@gmail.com>
  */
 #endregion
 
@@ -70,10 +71,6 @@ namespace WebSocketSharp
 
     private AuthenticationChallenge _authChallenge;
     private string                  _base64Key;
-    private LocalCertificateSelectionCallback
-                                    _certSelectionCallback;
-    private RemoteCertificateValidationCallback
-                                    _certValidationCallback;
     private bool                    _client;
     private Action                  _closeContext;
     private CompressionMethod       _compression;
@@ -101,6 +98,7 @@ namespace WebSocketSharp
     private volatile WebSocketState _readyState;
     private AutoResetEvent          _receivePong;
     private bool                    _secure;
+    private ClientSslConfiguration  _sslConfig;
     private Stream                  _stream;
     private TcpClient               _tcpClient;
     private Uri                     _uri;
@@ -234,40 +232,6 @@ namespace WebSocketSharp
     #endregion
 
     #region Public Properties
-
-    /// <summary>
-    /// Gets or sets the callback used to select a client certificate to supply to the server.
-    /// </summary>
-    /// <remarks>
-    /// If the value of this property is <see langword="null"/>, no client certificate will be
-    /// supplied.
-    /// </remarks>
-    /// <value>
-    /// A <see cref="LocalCertificateSelectionCallback"/> delegate that references the method
-    /// used to select the client certificate. The default value is <see langword="null"/>.
-    /// </value>
-    public LocalCertificateSelectionCallback ClientCertificateSelectionCallback
-    {
-      get {
-        return _certSelectionCallback;
-      }
-
-      set {
-        lock (_forConn) {
-          var msg = checkIfAvailable (false, false);
-          if (msg != null) {
-            _logger.Error (msg);
-            error (
-              "An error has occurred in setting the client certificate selection callback.",
-              null);
-
-            return;
-          }
-
-          _certSelectionCallback = value;
-        }
-      }
-    }
 
     /// <summary>
     /// Gets or sets the compression method used to compress the message on the WebSocket
@@ -464,19 +428,19 @@ namespace WebSocketSharp
     }
 
     /// <summary>
-    /// Gets or sets the callback used to validate the certificate supplied by the server.
+    /// Gets or sets the SSL configuration used to authenticate the server and
+    /// optionally the client for secure connection.
     /// </summary>
-    /// <remarks>
-    /// If the value of this property is <see langword="null"/>, the validation does nothing with
-    /// the server certificate, and always returns valid.
-    /// </remarks>
     /// <value>
-    /// A <see cref="RemoteCertificateValidationCallback"/> delegate that references the method
-    /// used to validate the server certificate. The default value is <see langword="null"/>.
+    /// A <see cref="ClientSslConfiguration"/> that represents the configuration used
+    /// to authenticate the server and optionally the client for secure connection,
+    /// or <see langword="null"/> if the <see cref="WebSocket"/> is used as server.
     /// </value>
-    public RemoteCertificateValidationCallback ServerCertificateValidationCallback {
+    public ClientSslConfiguration SslConfiguration {
       get {
-        return _certValidationCallback;
+        return _client
+               ? (_sslConfig ?? (_sslConfig = new ClientSslConfiguration (_uri.DnsSafeHost)))
+               : null;
       }
 
       set {
@@ -484,14 +448,12 @@ namespace WebSocketSharp
           var msg = checkIfAvailable (false, false);
           if (msg != null) {
             _logger.Error (msg);
-            error (
-              "An error has occurred in setting the server certificate validation callback.",
-              null);
+            error ("An error has occurred in setting the ssl configuration.", null);
 
             return;
           }
 
-          _certValidationCallback = value;
+          _sslConfig = value;
         }
       }
     }
@@ -696,7 +658,7 @@ namespace WebSocketSharp
       _logger.Trace ("Start closing the connection.");
 
       e.WasClean = closeHandshake (
-        WebSocketFrame.CreateCloseFrame (e.PayloadData, _client).ToByteArray (),
+        send ? WebSocketFrame.CreateCloseFrame (e.PayloadData, _client).ToByteArray () : null,
         wait ? _waitTime : TimeSpan.Zero,
         _client ? (Action) releaseClientResources : releaseServerResources);
 
@@ -1369,16 +1331,30 @@ namespace WebSocketSharp
       }
 
       if (_secure) {
-        var sslStream = new SslStream (
-          _stream,
-          false,
-          _certValidationCallback ?? ((sender, certificate, chain, sslPolicyErrors) => true),
-          _certSelectionCallback ??
-            ((sender, targetHost, localCertificates, remoteCertificate, acceptableIssuers) =>
-              null));
+        var conf = SslConfiguration;
+        var host = conf.TargetHost;
+        if (host != _uri.DnsSafeHost)
+          throw new WebSocketException (
+            CloseStatusCode.TlsHandshakeFailure, "An invalid host name is specified.");
 
-        sslStream.AuthenticateAsClient (_uri.DnsSafeHost);
-        _stream = sslStream;
+        try {
+          var sslStream = new SslStream (
+            _stream,
+            false,
+            conf.ServerCertificateValidationCallback,
+            conf.ClientCertificateSelectionCallback);
+
+          sslStream.AuthenticateAsClient (
+            host,
+            conf.ClientCertificates,
+            conf.EnabledSslProtocols,
+            conf.CheckCertificateRevocation);
+
+          _stream = sslStream;
+        }
+        catch (Exception ex) {
+          throw new WebSocketException (CloseStatusCode.TlsHandshakeFailure, ex);
+        }
       }
     }
 

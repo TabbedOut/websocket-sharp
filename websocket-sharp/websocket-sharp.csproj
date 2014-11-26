@@ -106,8 +106,6 @@
     <Compile Include="Net\HttpListenerResponse.cs" />
     <Compile Include="Net\HttpStreamAsyncResult.cs" />
     <Compile Include="Net\HttpUtility.cs" />
-    <Compile Include="Net\ListenerAsyncResult.cs" />
-    <Compile Include="Net\ListenerPrefix.cs" />
     <Compile Include="Net\RequestStream.cs" />
     <Compile Include="Net\ResponseStream.cs" />
     <Compile Include="Net\WebHeaderCollection.cs" />
@@ -155,6 +153,11 @@
     <Compile Include="HttpRequest.cs" />
     <Compile Include="HttpResponse.cs" />
     <Compile Include="Server\WebSocketBehavior.cs" />
+    <Compile Include="Net\HttpListenerPrefix.cs" />
+    <Compile Include="Net\ClientSslConfiguration.cs" />
+    <Compile Include="Net\ServerSslConfiguration.cs" />
+    <Compile Include="Net\SslConfiguration.cs" />
+    <Compile Include="Net\HttpListenerAsyncResult.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ItemGroup>

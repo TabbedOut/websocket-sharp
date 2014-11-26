@@ -36,6 +36,13 @@
  */
 #endregion
 
+#region Contributors
+/*
+ * Contributors:
+ * - Liryna <liryna.stark@gmail.com>
+ */
+#endregion
+
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -131,16 +138,21 @@ namespace WebSocketSharp
 
     private static byte[] readBytes (this Stream stream, byte[] buffer, int offset, int length)
     {
-      var len = stream.Read (buffer, offset, length);
-      if (len < 1)
-        return buffer.SubArray (0, offset);
+      var len = 0;
+      try {
+        len = stream.Read (buffer, offset, length);
+        if (len < 1)
+          return buffer.SubArray (0, offset);
 
-      while (len < length) {
-        var readLen = stream.Read (buffer, offset + len, length - len);
-        if (readLen < 1)
-          break;
+        while (len < length) {
+          var readLen = stream.Read (buffer, offset + len, length - len);
+          if (readLen < 1)
+            break;
 
-        len += readLen;
+          len += readLen;
+        }
+      }
+      catch {
       }
 
       return len < length
@@ -318,7 +330,7 @@ namespace WebSocketSharp
     internal static void CloseWithAuthChallenge (
       this HttpListenerResponse response, string challenge)
     {
-      response.Headers.SetInternally ("WWW-Authenticate", challenge, true);
+      response.Headers.InternalSet ("WWW-Authenticate", challenge, true);
       response.Close (HttpStatusCode.Unauthorized);
     }
 
@@ -549,10 +561,10 @@ namespace WebSocketSharp
       this TcpClient tcpClient,
       string protocol,
       bool secure,
-      X509Certificate certificate,
+      ServerSslConfiguration sslConfig,
       Logger logger)
     {
-      return new TcpListenerWebSocketContext (tcpClient, protocol, secure, certificate, logger);
+      return new TcpListenerWebSocketContext (tcpClient, protocol, secure, sslConfig, logger);
     }
 
     internal static byte[] InternalToByteArray (this ushort value, ByteOrder order)
@@ -672,12 +684,18 @@ namespace WebSocketSharp
         length,
         ar => {
           try {
-            var len = stream.EndRead (ar);
-            var bytes = len < 1
-                        ? new byte[0]
-                        : len < length
-                          ? stream.readBytes (buff, len, length - len)
-                          : buff;
+            byte[] bytes = null;
+            try {
+              var len = stream.EndRead (ar);
+              bytes = len < 1
+                      ? new byte[0]
+                      : len < length
+                        ? stream.readBytes (buff, len, length - len)
+                        : buff;
+            }
+            catch {
+              bytes = new byte[0];
+            }
 
             if (completed != null)
               completed (bytes);
