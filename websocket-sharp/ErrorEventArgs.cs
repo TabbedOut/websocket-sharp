@@ -65,12 +65,12 @@ namespace WebSocketSharp
 
     #region Internal Constructors
 
-    protected internal ErrorEventArgs (string message)
+    public ErrorEventArgs (string message)
       : this (message, null)
     {
     }
 
-    protected internal ErrorEventArgs (string message, Exception exception)
+    public ErrorEventArgs (string message, Exception exception)
     {
       _message = message;
       _exception = exception;

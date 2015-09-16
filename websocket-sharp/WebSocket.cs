@@ -46,7 +46,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Diagnostics;
 using System.IO;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -58,15 +57,15 @@ using WebSocketSharp.Net.WebSockets;
 
 namespace WebSocketSharp
 {
-  /// <summary>
+    /// <summary>
   /// Implements the WebSocket interface.
   /// </summary>
   /// <remarks>
   /// The WebSocket class provides a set of methods and properties for two-way communication using
   /// the WebSocket protocol (<see href="http://tools.ietf.org/html/rfc6455">RFC 6455</see>).
   /// </remarks>
-  public class WebSocket : IDisposable
-  {
+  public class WebSocket : IDisposable, IWebSocket
+    {
     #region Private Fields
 
     private AuthenticationChallenge _authChallenge;
