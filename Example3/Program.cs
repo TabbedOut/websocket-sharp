@@ -14,11 +14,15 @@ namespace Example3
     {
       /* Create a new instance of the HttpServer class.
        *
-       * If you would like to provide the secure connection, you should create the instance
-       * with the 'secure' parameter set to true.
+       * If you would like to provide the secure connection, you should create the instance with
+       * the 'secure' parameter set to true, or the https scheme HTTP URL.
        */
       var httpsv = new HttpServer (4649);
-      //httpsv = new HttpServer (4649, true);
+      //var httpsv = new HttpServer (5963, true);
+      //var httpsv = new HttpServer (System.Net.IPAddress.Parse ("127.0.0.1"), 4649);
+      //var httpsv = new HttpServer (System.Net.IPAddress.Parse ("127.0.0.1"), 5963, true);
+      //var httpsv = new HttpServer ("http://localhost:4649");
+      //var httpsv = new HttpServer ("https://localhost:5963");
 #if DEBUG
       // To change the logging level.
       httpsv.Log.Level = LogLevel.Trace;
@@ -86,6 +90,10 @@ namespace Example3
         "/Chat",
         () => new Chat ("Anon#") {
           Protocol = "chat",
+          // To emit a WebSocket.OnMessage event when receives a Ping.
+          EmitOnPing = true,
+          // To ignore the Sec-WebSocket-Extensions header.
+          IgnoreExtensions = true,
           // To validate the Origin header.
           OriginValidator = val => {
             // Check the value of the Origin header, and return true if valid.

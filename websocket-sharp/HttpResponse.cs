@@ -71,24 +71,27 @@ namespace WebSocketSharp
 
     #region Public Properties
 
-    public AuthenticationChallenge AuthenticationChallenge {
-      get {
-        var chal = Headers["WWW-Authenticate"];
-        return chal != null && chal.Length > 0
-               ? AuthenticationChallenge.Parse (chal)
-               : null;
-      }
-    }
-
     public CookieCollection Cookies {
       get {
         return Headers.GetCookies (true);
       }
     }
 
+    public bool HasConnectionClose {
+      get {
+        return Headers.Contains ("Connection", "close");
+      }
+    }
+
     public bool IsProxyAuthenticationRequired {
       get {
         return _code == "407";
+      }
+    }
+
+    public bool IsRedirect {
+      get {
+        return _code == "301" || _code == "302";
       }
     }
 
@@ -105,15 +108,6 @@ namespace WebSocketSharp
                _code == "101" &&
                headers.Contains ("Upgrade", "websocket") &&
                headers.Contains ("Connection", "Upgrade");
-      }
-    }
-
-    public AuthenticationChallenge ProxyAuthenticationChallenge {
-      get {
-        var chal = Headers["Proxy-Authenticate"];
-        return chal != null && chal.Length > 0
-               ? AuthenticationChallenge.Parse (chal)
-               : null;
       }
     }
 

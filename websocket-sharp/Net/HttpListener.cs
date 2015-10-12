@@ -2,13 +2,13 @@
 /*
  * HttpListener.cs
  *
- * This code is derived from System.Net.HttpListener.cs of Mono
+ * This code is derived from HttpListener.cs (System.Net) of Mono
  * (http://www.mono-project.com).
  *
  * The MIT License
  *
  * Copyright (c) 2005 Novell, Inc. (http://www.novell.com)
- * Copyright (c) 2012-2014 sta.blockhead
+ * Copyright (c) 2012-2015 sta.blockhead
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -74,6 +74,7 @@ namespace WebSocketSharp.Net
     private bool                                                 _disposed;
     private bool                                                 _ignoreWriteExceptions;
     private bool                                                 _listening;
+    private Logger                                               _logger;
     private HttpListenerPrefixCollection                         _prefixes;
     private string                                               _realm;
     private bool                                                 _reuseAddress;
@@ -100,6 +101,8 @@ namespace WebSocketSharp.Net
 
       _ctxRegistry = new Dictionary<HttpListenerContext, HttpListenerContext> ();
       _ctxRegistrySync = ((ICollection) _ctxRegistry).SyncRoot;
+
+      _logger = new Logger ();
 
       _prefixes = new HttpListenerPrefixCollection (this);
 
@@ -267,6 +270,23 @@ namespace WebSocketSharp.Net
     }
 
     /// <summary>
+    /// Gets the logging functions.
+    /// </summary>
+    /// <remarks>
+    /// The default logging level is <see cref="LogLevel.Error"/>. If you would like to change it,
+    /// you should set the <c>Log.Level</c> property to any of the <see cref="LogLevel"/> enum
+    /// values.
+    /// </remarks>
+    /// <value>
+    /// A <see cref="Logger"/> that provides the logging functions.
+    /// </value>
+    public Logger Log {
+      get {
+        return _logger;
+      }
+    }
+
+    /// <summary>
     /// Gets the URI prefixes handled by the listener.
     /// </summary>
     /// <value>
@@ -295,9 +315,7 @@ namespace WebSocketSharp.Net
     public string Realm {
       get {
         CheckDisposed ();
-        return _realm != null && _realm.Length > 0
-               ? _realm
-               : (_realm = "SECRET AREA");
+        return _realm != null && _realm.Length > 0 ? _realm : (_realm = "SECRET AREA");
       }
 
       set {
@@ -311,8 +329,8 @@ namespace WebSocketSharp.Net
     /// optionally the client for secure connection.
     /// </summary>
     /// <value>
-    /// A <see cref="ServerSslConfiguration"/> that represents the configuration used
-    /// to authenticate the server and optionally the client for secure connection.
+    /// A <see cref="ServerSslConfiguration"/> that represents the configuration used to
+    /// authenticate the server and optionally the client for secure connection.
     /// </value>
     /// <exception cref="ObjectDisposedException">
     /// This listener has been closed.
@@ -360,9 +378,9 @@ namespace WebSocketSharp.Net
     /// authenticate a client.
     /// </summary>
     /// <value>
-    /// A <c>Func&lt;<see cref="IIdentity"/>, <see cref="NetworkCredential"/>&gt;</c> delegate
-    /// that references the method used to find the credentials. The default value is a function
-    /// that only returns <see langword="null"/>.
+    /// A <c>Func&lt;<see cref="IIdentity"/>, <see cref="NetworkCredential"/>&gt;</c> delegate that
+    /// references the method used to find the credentials. The default value is a function that
+    /// only returns <see langword="null"/>.
     /// </value>
     /// <exception cref="ObjectDisposedException">
     /// This listener has been closed.
@@ -401,7 +419,7 @@ namespace WebSocketSharp.Net
         if (_connections.Count == 0)
           return;
 
-        // Need to copy this since closing will call RemoveConnection.
+        // Need to copy this since closing will call the RemoveConnection method.
         var keys = _connections.Keys;
         var conns = new HttpConnection[keys.Count];
         keys.CopyTo (conns, 0);
@@ -417,7 +435,7 @@ namespace WebSocketSharp.Net
         if (_ctxRegistry.Count == 0)
           return;
 
-        // Need to copy this since closing will call UnregisterContext.
+        // Need to copy this since closing will call the UnregisterContext method.
         var keys = _ctxRegistry.Keys;
         var ctxs = new HttpListenerContext[keys.Count];
         keys.CopyTo (ctxs, 0);
@@ -483,6 +501,38 @@ namespace WebSocketSharp.Net
     {
       lock (_connectionsSync)
         _connections[connection] = connection;
+    }
+
+    internal bool Authenticate (HttpListenerContext context)
+    {
+      var schm = SelectAuthenticationScheme (context);
+      if (schm == AuthenticationSchemes.Anonymous)
+        return true;
+
+      if (schm != AuthenticationSchemes.Basic && schm != AuthenticationSchemes.Digest) {
+        context.Response.Close (HttpStatusCode.Forbidden);
+        return false;
+      }
+
+      var realm = Realm;
+      var req = context.Request;
+      var user = HttpUtility.CreateUser (
+        req.Headers["Authorization"], schm, realm, req.HttpMethod, UserCredentialsFinder);
+
+      if (user != null && user.Identity.IsAuthenticated) {
+        context.User = user;
+        return true;
+      }
+
+      if (schm == AuthenticationSchemes.Basic)
+        context.Response.CloseWithAuthChallenge (
+          AuthenticationChallenge.CreateBasicChallenge (realm).ToBasicString ());
+
+      if (schm == AuthenticationSchemes.Digest)
+        context.Response.CloseWithAuthChallenge (
+          AuthenticationChallenge.CreateDigestChallenge (realm).ToDigestString ());
+
+      return false;
     }
 
     internal HttpListenerAsyncResult BeginGetContext (HttpListenerAsyncResult asyncResult)
@@ -556,9 +606,9 @@ namespace WebSocketSharp.Net
         _ctxRegistry.Remove (context);
 
       lock (_ctxQueueSync) {
-        var i = _ctxQueue.IndexOf (context);
-        if (i >= 0)
-          _ctxQueue.RemoveAt (i);
+        var idx = _ctxQueue.IndexOf (context);
+        if (idx >= 0)
+          _ctxQueue.RemoveAt (idx);
       }
     }
 
@@ -589,8 +639,8 @@ namespace WebSocketSharp.Net
     /// An <see cref="IAsyncResult"/> that represents the status of the asynchronous operation.
     /// </returns>
     /// <param name="callback">
-    /// An <see cref="AsyncCallback"/> delegate that references the method to invoke
-    /// when the asynchronous operation completes.
+    /// An <see cref="AsyncCallback"/> delegate that references the method to invoke when
+    /// the asynchronous operation completes.
     /// </param>
     /// <param name="state">
     /// An <see cref="object"/> that represents a user defined object to pass to
@@ -669,7 +719,7 @@ namespace WebSocketSharp.Net
       if (!ares.IsCompleted)
         ares.AsyncWaitHandle.WaitOne ();
 
-      return ares.GetContext (); // This will throw on error.
+      return ares.GetContext (); // This may throw an exception.
     }
 
     /// <summary>
