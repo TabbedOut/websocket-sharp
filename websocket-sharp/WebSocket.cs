@@ -50,6 +50,7 @@ using System.IO;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
 using WebSocketSharp.Net;
@@ -602,7 +603,7 @@ namespace WebSocketSharp
         {
             lock (_forConn)
             {
-                var msg = checkIfAvailable(false, false);
+                var msg = checkIfAvailable(true, false, true, false, false, false);
                 if (msg != null)
                 {
                     _logger.Error(msg);
