@@ -4,7 +4,7 @@
  *
  * The MIT License
  *
- * Copyright (c) 2012-2014 sta.blockhead
+ * Copyright (c) 2012-2015 sta.blockhead
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -54,6 +54,7 @@ namespace WebSocketSharp.Net.WebSockets
     #region Private Fields
 
     private CookieCollection    _cookies;
+    private Logger              _logger;
     private NameValueCollection _queryString;
     private HttpRequest         _request;
     private bool                _secure;
@@ -76,6 +77,7 @@ namespace WebSocketSharp.Net.WebSockets
     {
       _tcpClient = tcpClient;
       _secure = secure;
+      _logger = logger;
 
       var netStream = tcpClient.GetStream ();
       if (secure) {
@@ -98,7 +100,7 @@ namespace WebSocketSharp.Net.WebSockets
       _uri = HttpUtility.CreateRequestUrl (
         _request.RequestUri, _request.Headers["Host"], _request.IsWebSocketRequest, secure);
 
-      _websocket = new WebSocket (this, protocol, logger);
+      _websocket = new WebSocket (this, protocol);
     }
 
     #endregion
@@ -108,6 +110,12 @@ namespace WebSocketSharp.Net.WebSockets
     internal string HttpMethod {
       get {
         return _request.HttpMethod;
+      }
+    }
+
+    internal Logger Log {
+      get {
+        return _logger;
       }
     }
 

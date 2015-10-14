@@ -2,13 +2,13 @@
 /*
  * HttpListenerPrefix.cs
  *
- * This code is derived from System.Net.ListenerPrefix.cs of Mono
+ * This code is derived from ListenerPrefix.cs (System.Net) of Mono
  * (http://www.mono-project.com).
  *
  * The MIT License
  *
  * Copyright (c) 2005 Novell, Inc. (http://www.novell.com)
- * Copyright (c) 2012-2014 sta.blockhead
+ * Copyright (c) 2012-2015 sta.blockhead
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -47,20 +47,20 @@ namespace WebSocketSharp.Net
   {
     #region Private Fields
 
-    IPAddress[]  _addresses;
-    string       _host;
-    HttpListener _listener;
-    string       _original;
-    string       _path;
-    ushort       _port;
-    bool         _secure;
+    private IPAddress[]  _addresses;
+    private string       _host;
+    private HttpListener _listener;
+    private string       _original;
+    private string       _path;
+    private ushort       _port;
+    private bool         _secure;
 
     #endregion
 
-    #region Public Constructors
+    #region Internal Constructors
 
-    // Must be called after calling HttpListenerPrefix.CheckPrefix.
-    public HttpListenerPrefix (string uriPrefix)
+    // Must be called after calling the CheckPrefix method.
+    internal HttpListenerPrefix (string uriPrefix)
     {
       _original = uriPrefix;
       parse (uriPrefix);
@@ -148,7 +148,7 @@ namespace WebSocketSharp.Net
 
     #endregion
 
-    #region public Methods
+    #region Public Methods
 
     public static void CheckPrefix (string uriPrefix)
     {
@@ -190,7 +190,7 @@ namespace WebSocketSharp.Net
         throw new ArgumentException ("Ends without '/'.");
     }
 
-    // Equals and GetHashCode are required to detect duplicates in any collection.
+    // The Equals and GetHashCode methods are required to detect duplicates in any collection.
     public override bool Equals (Object obj)
     {
       var pref = obj as HttpListenerPrefix;
