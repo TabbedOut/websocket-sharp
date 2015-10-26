@@ -92,7 +92,7 @@ namespace WebSocketSharp
                                     _handshakeRequestChecker;
     private bool                    _ignoreExtensions;
     private bool                    _inContinuation;
-    private volatile Logger         _logger;
+    private volatile IWebSocketLogger _logger;
     private Queue<MessageEventArgs> _messageEventQueue;
     private uint                    _nonceCount;
     private string                  _origin;
@@ -426,12 +426,12 @@ namespace WebSocketSharp
     /// <value>
     /// A <see cref="Logger"/> that provides the logging functions.
     /// </value>
-    public Logger Log {
+    public IWebSocketLogger Log {
       get {
         return _logger;
       }
 
-      internal set {
+      set {
         _logger = value;
       }
     }
