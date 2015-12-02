@@ -1,11 +1,11 @@
 <?xml version="1.0"?>
 <package >
   <metadata>
-    <id>websocket-sharp</id>
+    <id>websocket-sharp-tabbedout</id>
     <version>@build.number@</version>
     <authors>sta</authors>
     <owners>sta</owners>
-    <summary>TabbedOut fork of the popular C# websocket library. We are maintaining this fork for feature additions which sta does not wish to support. Mainly support for extra headers and testability.</summary>
+    <summary>TabbedOut fork of the popular C# websocket library. We are maintaining this fork for feature additions which sta does not wish to support. Mhainly support for extra headers and testability.</summary>
     <description>A C# implementation of the WebSocket protocol client and server http://sta.github.io/websocket-sharp</description>
     <projectUrl>http://sta.github.io/websocket-sharp/</projectUrl>
     <licenseUrl>https://github.com/sta/websocket-sharp/blob/master/LICENSE.txt</licenseUrl>
