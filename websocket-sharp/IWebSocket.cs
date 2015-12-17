@@ -166,5 +166,6 @@ namespace WebSocketSharp
         /// </param>
         void SendAsync (string data, Action<bool> completed);
 
+        bool Ping();
     }
 }
